@@ -4,14 +4,12 @@ const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+
 const app = express();
 const port = process.env.PORT || 5000;
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
 app.use(cors());
 app.use(express.json());
-
-//This Stripe secret key is our coppied Secret key
-
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.6khde.mongodb.net/?retryWrites=true&w=majority`;
@@ -24,7 +22,7 @@ function verifyJWT(req, res, next) {
         return res.status(401).send({ message: 'UnAuthorized access' });
     }
     const token = authHeader.split(' ')[1];
-    jwt.verify(token, "9b747c40c01ac0af025d192bcb08d5b1512ea8b9df4f7d41a26152d143846c536ee29627a19ecac90194a06ffc22930078b86f3807556e551b4f8386bddc270e", function (err, decoded) {
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
         if (err) {
             return res.status(403).send({ message: 'Forbidden access' })
         }
@@ -39,7 +37,6 @@ async function run() {
         await client.connect();
         const productCollection = client.db("ars-car-parts").collection("products");
         const reviewCollection = client.db("ars-car-parts").collection("reviews");
-        const orderCollection = client.db("ars-car-parts").collection("orders");
         const order2Collection = client.db("ars-car-parts").collection("orders2");
         const userCollection = client.db("ars-car-parts").collection("users");
 
@@ -103,22 +100,6 @@ async function run() {
             res.send(users);
         })
 
-
-        //Get Payment
-        app.post('/create-payment-intent', async (req, res) => {
-            const product = req.body;
-            const price = product.productPrice;
-            const amount = price * 100;
-            const paymentIntent = await stripe.paymentIntents.create({
-                amount: amount,
-                currency: 'usd',
-                payment_method_types: ['card']
-            });
-            res.send({ clientSecret: paymentIntent.client_secret })
-        });
-
-
-
         //Make admin
         app.put('/user/admin/:email', verifyJWT, async (req, res) => {
             const email = req.params.email;
@@ -135,6 +116,25 @@ async function run() {
             else {
                 res.status.send({ message: 'forbidden' });
             }
+        })
+
+        //Remove Admin Access
+        app.put('/user/remove/:email', verifyJWT, async (req, res) => {
+            const email = req.params.email;
+            const requester = req.decoded.email;
+            const requesterAccount = await userCollection.findOne({ email: requester });
+            if (requesterAccount.role === 'admin') {
+                const filter = { email: email };
+                const updateDoc = {
+                    $set: { role: '' },
+                };
+                const result = await userCollection.updateOne(filter, updateDoc);
+                res.send(result);
+            }
+            else {
+                res.status.send({ message: 'forbidden' });
+            }
+
         })
 
         //Add Orders
@@ -169,6 +169,15 @@ async function run() {
             res.send(orders);
         })
 
+        //Delete Order
+        app.delete('/order-delete', async (req, res) => {
+            const id = req.query.id;
+            const query = { _id: ObjectId(id) };
+            const result = await order2Collection.deleteOne(query);
+            res.send(result);
+
+        })
+
 
         //Get Reviews
         app.get('/reviews', async (req, res) => {
@@ -184,11 +193,6 @@ async function run() {
             const result = await reviewCollection.insertOne(newReview);
             res.send(result);
         })
-
-
-
-
-
 
 
 
