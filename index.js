@@ -41,7 +41,7 @@ async function run() {
         const userCollection = client.db("ars-car-parts").collection("users");
 
 
-        //Get Products
+        //Get Products.
         app.get('/products', async (req, res) => {
             const query = {};
             const cursor = productCollection.find(query);
